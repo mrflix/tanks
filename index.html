@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Combat</title>
+<script>
+  var connection = new WebSocket('ws://172.23.42.133:8001')
+  connection.binaryType = "blob"
+
+  var controls = {
+    37: "left",
+    38: "up",
+    39: "right",
+    40: "down",
+    32: "space",
+  }
+
+
+  function start(){
+    window.onkeyup = function(event){
+      if(controls[event.keyCode])
+        connection.send(controls[event.keyCode]+" off")
+    }
+    window.onkeydown=function(event){
+      if(controls[event.keyCode])
+        connection.send(controls[event.keyCode]+" on")
+    }
+  }
+
+  connection.onmessage = function(message){
+    console.log("message", message)
+  }
+
+  connection.onopen = function() {
+    // var name = prompt("Player Name")
+    // connection.send("name", name)
+    start()
+  }
+</script>
