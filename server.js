@@ -1,5 +1,15 @@
+/*
+
+  Combat
+
+  by Stephen Lavelle and Felix Niklas at the CCCB in 2015
+
+  Ideas:
+      - Make the tank slower when you shoot (Denis)
+
+*/
 var width = 448
-var height = 240
+var height = 160
 var tileSize = 8
 var gutter = 4
 var pixels = new Uint8Array(width * height)
@@ -8,7 +18,6 @@ var map = "\
 ############################################\
 #...................##.....................#\
 #...................##.....................#\
-#...................##.....................#\
 #.....####......................####.......#\
 #..........................................#\
 #............###...........###.............#\
@@ -23,7 +32,6 @@ var map = "\
 #............###...........###.............#\
 #..........................................#\
 #.....####......................####.......#\
-#...................##.....................#\
 #...................##.....................#\
 #...................##.....................#\
 ############################################\
@@ -32,6 +40,8 @@ var map = "\
 var mapWidth=44;
 var mapHeight=map.length/mapWidth;
 var tileWidth=8;
+var bulletSpeed = 7;
+var tankSpeed = 2;
  
 var state = {
   players:[],
@@ -142,10 +152,10 @@ function movePlayer(player){
 
   // move tank
   if(player.input.up || player.input.down){
-    var speed = player.input.up ? 1 : -1
+    var direction = player.input.up ? 1 : -1
     var angle = player.dir/16 * 2 * Math.PI
-    var newX = player.x + Math.sin(angle) * speed
-    var newY = player.y - Math.cos(angle) * speed
+    var newX = player.x + Math.sin(angle) * direction * tankSpeed
+    var newY = player.y - Math.cos(angle) * direction * tankSpeed
     if (canMove(player,newX,newY)){
       player.x=newX
       player.y=newY
@@ -180,8 +190,8 @@ function findPlayerIndex(id){
 
 function shootBullet(player){
   var angle = player.dir/16 * 2 * Math.PI
-  var newX = player.x + tileSize/2 + Math.sin(angle) * 4
-  var newY = player.y + tileSize/2 - Math.cos(angle) * 4
+  var newX = player.x + tileSize/2 + Math.sin(angle) * bulletSpeed
+  var newY = player.y + tileSize/2 - Math.cos(angle) * bulletSpeed
 
   state.bullets.push({
     x: newX,
@@ -222,7 +232,7 @@ function bulletHits(bullet){
 
     if(dx >= 0 && dx < tileWidth &&
        dy >= 0 && dy < tileWidth){
-      killPlayer(player)
+      killPlayer(other)
       playerScore(bullet.owner)
       return true
     }
@@ -325,6 +335,37 @@ function drawToCanvas(){
     drawBullet(b.x,b.y);
   }
   sendPixelsToDisplay()
+  drawScoreboard()
+}
+
+var maxLength = 10
+
+function drawScoreboard(){
+  var text = "";
+  var playerCopy = state.players.slice()
+  playerCopy.sort(function(a, b){
+    return a.score < b.score
+  })
+
+  for(var i=0; i<playerCopy.length; i++){
+    var name = playerCopy[i].name
+    var score = playerCopy[i].score
+
+    if(!name)
+      continue
+
+    var textLength = maxLength - score.toString().length - 1
+    var spaces = textLength - name.length + 1
+
+    if(name.length > textLength)
+      name = name.slice(0, textLength)
+    else
+      name += (new Array(spaces+1).join(" "))
+
+    text += name + score
+  }
+
+  placeText(text, width/8 - maxLength - 1, 1, maxLength, playerCopy.length)
 }
 
 /*
@@ -350,11 +391,7 @@ fs.createReadStream('images/tank.png')
     }
     tankSpriteWidth = this.width
 
-    console.log("tank loaded")
-
-    // when websocket connection is ready
-    if(display.readyState == 1)
-      startGame()
+    startGame()
 });
 
 
@@ -382,7 +419,10 @@ server.on('connection', function connection(client) {
     var key = message.split(" ")[0]
     var onOff = message.split(" ")[1]
 
-    if(key === 'space' && onOff === 'on'){
+    if(key === 'name'){
+      player.name = onOff
+    }
+    else if(key === 'space' && onOff === 'on'){
       shootBullet(player)
     } else {
       player.input[key] = onOff === 'on'
@@ -403,21 +443,24 @@ server.on('connection', function connection(client) {
 
 */
 
-var WebSocket = require('ws')
-var display = new WebSocket('ws://172.23.42.29:7681/apd')
-
-display.on('open', function open() {
-  // server.send('Connected to display')
-
-  // if sprite got loaded
-  if(tankSprite.length)
-    startGame()
-})
+var dgram = require('dgram');
+var client = dgram.createSocket('udp4');
 
 function sendPixelsToDisplay(){
-  var packedBytes = new Uint8Array(pixels.length/8);
+  var packedBytes = new Buffer(10 + pixels.length/8);
 
-  for(var i = 0, n = 0, l = pixels.length; i < l; n++){
+  packedBytes[0] = 0
+  packedBytes[1] = 18
+  packedBytes[2] = 0 
+  packedBytes[3] = 0
+  packedBytes[4] = pixels.length/8/256
+  packedBytes[5] = pixels.length/8 % 256
+  packedBytes[6] = 0
+  packedBytes[7] = 0
+  packedBytes[8] = 0
+  packedBytes[9] = 0
+
+  for(var i = 0, n = 10, l = pixels.length; i < l; n++){
     var sum = 0;
 
     // if(i > 0 && i % (width*8) == 0)
@@ -429,7 +472,29 @@ function sendPixelsToDisplay(){
     packedBytes[n] = sum;
   }
 
-  display.send(packedBytes)
+  client.send(packedBytes, 0, packedBytes.length, 2342, '172.23.42.29');
+}
+
+function placeText(text, x, y, width, height){
+  var packedBytes = new Buffer(10 + text.length);
+
+  packedBytes[0] = 0
+  packedBytes[1] = 3
+  packedBytes[2] = x/256
+  packedBytes[3] = x % 256
+  packedBytes[4] = y/256
+  packedBytes[5] = y % 256
+  packedBytes[6] = width/256
+  packedBytes[7] = width % 256
+  packedBytes[8] = height/256
+  packedBytes[9] = height % 256
+
+  for(var i = 0, n = 10; i < text.length; n++){
+    packedBytes[n] = text.charCodeAt(i++);
+  }
+
+
+  client.send(packedBytes, 0, packedBytes.length, 2342, '172.23.42.29');
 }
 
 
@@ -450,5 +515,5 @@ function tick(){
 function startGame(){
   drawToCanvas();
 
-  setInterval(tick,200);
+  setInterval(tick,100);
 }

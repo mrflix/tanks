@@ -30,8 +30,8 @@
   }
 
   connection.onopen = function() {
-    // var name = prompt("Player Name")
-    // connection.send("name", name)
+    var name = prompt("Player Name")
+    connection.send("name "+ name)
     start()
   }
 </script>
