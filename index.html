@@ -11,17 +11,30 @@
     39: "right",
     40: "down",
     32: "space",
+    87: "up", // 'w'
+    65: "left", // 'a'
+    83: "down", // 's'
+    68: "right", // 'd'
   }
 
 
   function start(){
     window.onkeyup = function(event){
-      if(controls[event.keyCode])
-        connection.send(controls[event.keyCode]+" off")
+      if(controls[event.keyCode]){
+        connection.send(JSON.stringify({
+          type: 'input-off',
+          value: controls[event.keyCode]
+        }))
+      }
     }
     window.onkeydown=function(event){
-      if(controls[event.keyCode])
-        connection.send(controls[event.keyCode]+" on")
+      console.log(event.keyCode)
+      if(controls[event.keyCode]){
+        connection.send(JSON.stringify({
+          type: 'input-on',
+          value: controls[event.keyCode]
+        }))
+      }
     }
   }
 
@@ -30,8 +43,15 @@
   }
 
   connection.onopen = function() {
-    var name = prompt("Player Name")
-    connection.send("name "+ name)
+    var name = ""
+
+    while(!name)
+      name = prompt("Player Name")
+
+    connection.send(JSON.stringify({
+      type: 'name',
+      value: name
+    }))
     start()
   }
 </script>

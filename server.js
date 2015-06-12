@@ -40,8 +40,9 @@ var map = "\
 var mapWidth=44;
 var mapHeight=map.length/mapWidth;
 var tileWidth=8;
-var bulletSpeed = 7;
-var tankSpeed = 2;
+var bulletSpeed = 8;
+var tankSpeed = 1.5;
+var turnSpeed = 0.5;
  
 var state = {
   players:[],
@@ -88,7 +89,7 @@ function findEmptyPos(){
   return randomElem(candidatePositions);
 }
  
-function addPlayer(id){
+function addPlayer(id, name){
   var emptyPos = findEmptyPos();
   var player = {
     id:id,
@@ -96,9 +97,10 @@ function addPlayer(id){
     y:emptyPos[1]*tileWidth,
     dir:randInt(0,16),
     score:0,
-    input:{}
+    input:{},
+    name: name
   }
-  console.log("adding " + player.x+","+player.y+","+player.id);
+  console.log("adding " + player.name +" at "+ player.x+","+player.y+","+player.id);
   state.players.push(player);
   return player;
 }
@@ -146,9 +148,9 @@ function canMove(player,x,y){
 function movePlayer(player){
   // move turret
   if(player.input.left)
-    player.dir = (player.dir+15)%16
+    player.dir = (player.dir+16-turnSpeed)%16
   if(player.input.right)
-    player.dir = (player.dir+1)%16
+    player.dir = (player.dir+turnSpeed)%16
 
   // move tank
   if(player.input.up || player.input.down){
@@ -289,6 +291,7 @@ function drawWall(tile_x, tile_y) {
 function drawPlayer(pixel_x, pixel_y, dir) {
   pixel_x = Math.round(pixel_x)
   pixel_y = Math.round(pixel_y)
+  dir = Math.round(dir) % 16
 
   for(var dy = 0; dy < tileSize; dy++){
     for(var dx = 0; dx < tileSize; dx++){
@@ -351,14 +354,11 @@ function drawScoreboard(){
     var name = playerCopy[i].name
     var score = playerCopy[i].score
 
-    if(!name)
-      continue
-
     var textLength = maxLength - score.toString().length - 1
     var spaces = textLength - name.length + 1
 
     if(name.length > textLength)
-      name = name.slice(0, textLength)
+      name = name.slice(0, textLength) + " "
     else
       name += (new Array(spaces+1).join(" "))
 
@@ -410,22 +410,27 @@ function uniqueID(){
 }
 
 server.on('connection', function connection(client) {
-  console.log("user connected")
-  var player = addPlayer(uniqueID())
+  var player
 
   client.on('message', function incoming(message) {
     console.log('received: %s', message)
 
-    var key = message.split(" ")[0]
-    var onOff = message.split(" ")[1]
+    message = JSON.parse(message)
+    var value = message.value
 
-    if(key === 'name'){
-      player.name = onOff
-    }
-    else if(key === 'space' && onOff === 'on'){
-      shootBullet(player)
-    } else {
-      player.input[key] = onOff === 'on'
+    switch(message.type){
+      case 'input-on':
+        if(value === 'space')
+          shootBullet(player)
+        else
+          player.input[value] = true
+        break
+      case 'input-off':
+        player.input[value] = false
+        break
+      case 'name':
+        player = addPlayer(uniqueID(), value)
+        break
     }
   })
 
@@ -515,5 +520,5 @@ function tick(){
 function startGame(){
   drawToCanvas();
 
-  setInterval(tick,100);
+  setInterval(tick, 40);
 }
