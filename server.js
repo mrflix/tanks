@@ -8,11 +8,8 @@
       - Make the tank slower when you shoot (Denis)
 
 */
-var width = 448
-var height = 160
 var tileSize = 8
 var gutter = 4
-var pixels = new Uint8Array(width * height)
 var players = []
 var map = "\
 ############################################\
@@ -43,6 +40,10 @@ var tileWidth=8;
 var bulletSpeed = 8;
 var tankSpeed = 1.5;
 var turnSpeed = 0.5;
+
+var width = tileSize * mapWidth
+var height = tileSize * mapHeight
+var pixels = new Uint8Array(width * height)
  
 var state = {
   players:[],
@@ -89,7 +90,7 @@ function findEmptyPos(){
   return randomElem(candidatePositions);
 }
  
-function addPlayer(id, name){
+function addPlayer(id, name, connection){
   var emptyPos = findEmptyPos();
   var player = {
     id:id,
@@ -98,7 +99,8 @@ function addPlayer(id, name){
     dir:randInt(0,16),
     score:0,
     input:{},
-    name: name
+    name: name,
+    connection: connection
   }
   console.log("adding " + player.name +" at "+ player.x+","+player.y+","+player.id);
   state.players.push(player);
@@ -174,6 +176,9 @@ function playerScore(player){
 }
 
 function killPlayer(player){
+  player.connection.send(JSON.stringify({
+    type: 'shot'
+  }))
   var emptyPos = findEmptyPos()
   player.x = emptyPos[0] * tileWidth
   player.y = emptyPos[1] * tileWidth;
@@ -274,8 +279,8 @@ function clearCanvas() {
 }
 
 function drawWall(tile_x, tile_y) {
-  for(var dy = 0; dy < tileSize; dy++){
-    for(var dx = 0; dx < tileSize; dx+=2){
+  for(var dy = 0, i = 0; dy < tileSize; dy++){
+    for(var dx = i % 2; dx < tileSize; dx+=2, i++){
       // y
       var i = (tile_y*tileSize + dy) * width
 
@@ -342,6 +347,7 @@ function drawToCanvas(){
 }
 
 var maxLength = 10
+var maxRows = 20
 
 function drawScoreboard(){
   var text = "";
@@ -350,7 +356,7 @@ function drawScoreboard(){
     return a.score < b.score
   })
 
-  for(var i=0; i<playerCopy.length; i++){
+  for(var i=0; i<Math.min(playerCopy.length, maxRows); i++){
     var name = playerCopy[i].name
     var score = playerCopy[i].score
 
@@ -365,7 +371,12 @@ function drawScoreboard(){
     text += name + score
   }
 
-  placeText(text, width/8 - maxLength - 1, 1, maxLength, playerCopy.length)
+  if(playerCopy.length < maxRows){
+    var missingRows = maxRows - playerCopy.length + 1
+    text += (new Array(missingRows*maxLength).join(" "))
+  }
+
+  placeText(text, mapWidth + 1, 1, maxLength, maxRows-2)
 }
 
 /*
@@ -429,14 +440,15 @@ server.on('connection', function connection(client) {
         player.input[value] = false
         break
       case 'name':
-        player = addPlayer(uniqueID(), value)
+        player = addPlayer(uniqueID(), value, client)
         break
     }
   })
 
   client.on('close', function leaving(client) {
     console.log("user left")
-    removePlayer(player.id)
+    if(player)
+      removePlayer(player.id)
   })
 })
 
@@ -450,26 +462,24 @@ server.on('connection', function connection(client) {
 
 var dgram = require('dgram');
 var client = dgram.createSocket('udp4');
+clearScreen()
 
 function sendPixelsToDisplay(){
   var packedBytes = new Buffer(10 + pixels.length/8);
 
   packedBytes[0] = 0
-  packedBytes[1] = 18
-  packedBytes[2] = 0 
+  packedBytes[1] = 19
+  packedBytes[2] = 0
   packedBytes[3] = 0
-  packedBytes[4] = pixels.length/8/256
-  packedBytes[5] = pixels.length/8 % 256
-  packedBytes[6] = 0
-  packedBytes[7] = 0
-  packedBytes[8] = 0
-  packedBytes[9] = 0
+  packedBytes[4] = 0
+  packedBytes[5] = 0
+  packedBytes[6] = mapWidth / 256
+  packedBytes[7] = mapWidth % 256
+  packedBytes[8] = height / 256
+  packedBytes[9] = height % 256
 
   for(var i = 0, n = 10, l = pixels.length; i < l; n++){
     var sum = 0;
-
-    // if(i > 0 && i % (width*8) == 0)
-    //   n += gutter * width/8
 
     for(var j=128; j > 0; j = (j>>1)){
       sum += pixels[i++] ? j : 0;
@@ -502,6 +512,13 @@ function placeText(text, x, y, width, height){
   client.send(packedBytes, 0, packedBytes.length, 2342, '172.23.42.29');
 }
 
+function clearScreen(){
+  var buffer = new Buffer(2)
+  buffer[0] = 0
+  buffer[1] = 2
+  client.send(buffer, 0, 2, 2342, '172.23.42.29');
+}
+
 
 function tick(){
   for(var i=0; i<state.players.length; i++){
@@ -520,5 +537,5 @@ function tick(){
 function startGame(){
   drawToCanvas();
 
-  setInterval(tick, 40);
+  setInterval(tick, 1000/25);
 }
