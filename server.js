@@ -1,6 +1,6 @@
 /*
 
-  Combat
+  Tanks
 
   by Stephen Lavelle and Felix Niklas at the CCCB in 2015
 
